@@ -63,7 +63,56 @@ class jobd(BaseModel):
     education_requirements: list[str]
     responsibilities: list[str]
 
-jobd_schema=jobd.model_json_schema()
+jobd_schema = jobd.model_json_schema()
+
+
+def get_job(job_description_text=None):
+    system_prompt = f"""
+    You are an expert HR assistant.
+
+    Your job is to analyse a job description and extract structured
+    information from it.
+
+    Return ONLY valid JSON matching this schema:
+
+    {jobd_schema}
+
+    IMPORTANT:
+    - Do not return the schema itself.
+    - Fill the fields with actual information from the job description.
+    - If minimum experience is not mentioned, return null.
+    - If information for a list is missing, return an empty list.
+    - Do not invent information.
+    """
+
+    user_prompt = f"""
+    Analyse the following job description:
+
+    {job_description_text if job_description_text else job_description}
+    """
+
+    messages = [
+        {
+            "role": "system",
+            "content": system_prompt
+        },
+        {
+            "role": "user",
+            "content": user_prompt
+        }
+    ]
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=2,
+        response_format={"type": "json_object"}
+    )
+
+    raw_json = response.choices[0].message.content
+    job_data = json.loads(raw_json)
+
+    return jobd(**job_data)
 response_format={
     "type":"json_object"}
 system_prompt=f"""you are an expert hr assistant. your job is to analyse job description and extract structured information from them return only valid JSON matching this schema {jobd_schema}
@@ -251,52 +300,3 @@ def read_resume(file_path):
 
 
 
-resume_folder = Path("resumes")
-all_results=[]
-for file_path in resume_folder.iterdir():
-    
-    if file_path.suffix.lower() not in [".pdf", ".docx"]:
-        continue
-    print("\nProcessing:", file_path.name)
-    resume_text = read_resume(file_path)
-    parsed_resume=parse_resume(resume_text) # llm call1
-    time.sleep(5)
-    result = final_score(job, parsed_resume) #llm caLL2
-    
-    time.sleep(5)
-    print("Score:", result.score)
-    all_results.append({
-        "name": parsed_resume.name,
-        "score": result.score,
-        "details": result.details
-    })
-all_results.sort(
-    key=lambda candidate: candidate["score"],
-    reverse=True
-)
-top_2 = all_results[:2]
-worst_2 = all_results[-2:]
-
-
-print("TOP 2 CANDIDATES")
-for candidate in top_2:
-
-    print(
-        candidate["name"],
-        "-",
-        candidate["score"],
-        "%"
-    )
-
-    print(candidate["details"])
-
-print("LOWEST 2 CANDIDATES")
-for candidate in worst_2:
-
-    print(
-        candidate["name"],
-        "-",
-        candidate["score"],
-        "%"
-    )
-    print(candidate["details"])
